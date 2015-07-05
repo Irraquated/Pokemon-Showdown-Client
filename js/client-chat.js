@@ -826,7 +826,7 @@
 			case 'buttonunmute':
 				this.send('/unmute ' + target);
 				return false;
-
+			
 			case 'buttonkick':
 			case 'buttonwarn':
 				var self = this;
