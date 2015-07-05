@@ -5,6 +5,8 @@
 html, body {
 	margin: 0;
 	padding: 0;
+	height: 100%;
+	overflow: visible;
 }
 body {
 	color: white;
@@ -1772,6 +1774,7 @@ div[class^='tournament-message-'], div[class*=' tournament-message-'] {
 }
 
 .teamlist .team {
+	display: inline-block;
 	white-space: nowrap;
 	width: 360px;
 	height: 49px;
@@ -1783,7 +1786,7 @@ div[class^='tournament-message-'], div[class*=' tournament-message-'] {
 .teamlist .dragging button {
 	visibility: hidden;
 }
-.teamlist .dragging button.team {
+.teamlist .dragging .team {
 	visibility: visible;
 	background: #DDDDDD;
 	border-color: #DDDDDD;

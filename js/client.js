@@ -4,8 +4,10 @@
 		window.gui = require('nw.gui');
 		window.nwWindow = gui.Window.get();
 	}
-	$(document).on('click', 'a', function(e) {
-		if (this.href && this.className !== 'closebutton' && (this.href.substr(0, 32) === 'http://play.pokemonshowdown.com/' || this.href.substr(0, 33) === 'https://play.pokemonshowdown.com/')) {
+	$(window).on('click', 'a', function(e) {
+		if (this.className === 'closebutton') return; // handled elsewhere
+		if (!this.href) return; // should never happen
+		if (this.href.substr(0, 32) === 'http://play.pokemonshowdown.com/' || this.href.substr(0, 33) === 'https://play.pokemonshowdown.com/') {
 			var target;
 			if (this.href.charAt(4) === ':') {
 				target = this.href.substr(32);
@@ -29,8 +31,16 @@
 	});
 	$(window).on('dragover', function (e) {
 		e.preventDefault();
-		// dropEffect !== 'none' prevents animation
-		e.dataTransfer.dropEffect = 'move';
+		// dropEffect !== 'none' prevents buggy bounce-back animation in
+		// Chrome/Safari/Opera
+		e.originalEvent.dataTransfer.dropEffect = 'move';
+	});
+	$(window).on('drop', function (e) {
+		// The default team drop action for Firefox is to open the team as a
+		// URL, which needs to be prevented.
+		// The default file drop action for most browsers is to open the file
+		// in the tab, which is generally undesirable anyway.
+		e.preventDefault();
 	});
 	if (window.nodewebkit) {
 		$(document).on("contextmenu", function(e) {

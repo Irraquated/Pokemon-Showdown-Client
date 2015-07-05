@@ -48,11 +48,12 @@
 			'change .chartinput': 'chartChange',
 
 			// drag/drop
+			'click .team': 'edit',
 			'mouseover .team': 'mouseOverTeam',
 			'mouseout .team': 'mouseOutTeam',
 			'dragstart .team': 'dragStartTeam',
 			'dragend .team': 'dragEndTeam',
-			'dragover .team': 'dragOverTeam',
+			'dragenter .team': 'dragEnterTeam',
 
 			// clipboard
 			'click .teambuilder-clipboard-data .result': 'clipboardResultSelect',
@@ -177,9 +178,9 @@
 						formatText = '['+team.format+'] ';
 					}
 
-					buf += '<li><button name="edit" value="'+i+'" class="team" draggable="true">'+formatText+'<strong>'+Tools.escapeHTML(team.name)+'</strong><br /><small>';
+					buf += '<li><div name="edit" data-value="'+i+'" class="team" draggable="true">'+formatText+'<strong>'+Tools.escapeHTML(team.name)+'</strong><br /><small>';
 					buf += Storage.getTeamIcons(team);
-					buf += '</small></button> <button name="edit" value="'+i+'"><i class="icon-pencil"></i>Edit</button> <button name="delete" value="'+i+'"><i class="icon-trash"></i>Delete</button></li>';
+					buf += '</small></div> <button name="edit" value="'+i+'"><i class="icon-pencil"></i>Edit</button> <button name="delete" value="'+i+'"><i class="icon-trash"></i>Delete</button></li>';
 				}
 			}
 			buf += '<li><button name="new"><i class="icon-plus-sign"></i> New team</button></li>';
@@ -205,6 +206,9 @@
 			Storage.nwLoadTeams();
 		},
 		edit: function(i) {
+			if (i && i.currentTarget) {
+				i = $(i.currentTarget).data('value');
+			}
 			i = +i;
 			this.curTeam = teams[i];
 			this.curTeam.iconCache = '!';
@@ -286,38 +290,96 @@
 			var target = e.currentTarget;
 			var dataTransfer = e.originalEvent.dataTransfer;
 			dataTransfer.effectAllowed = 'move';
+			dataTransfer.setData("text/plain", "Team " + e.currentTarget.dataset.value);
 			app.dragging = e.currentTarget;
-			app.draggingLoc = parseInt(e.currentTarget.value);
+			app.draggingLoc = parseInt(e.currentTarget.dataset.value);
+			elOffset = $(e.currentTarget).offset();
+			app.draggingOffsetX = e.originalEvent.pageX - elOffset.left;
+			app.draggingOffsetY = e.originalEvent.pageY - elOffset.top;
 			setTimeout(function() {
 				$(e.currentTarget).parent().addClass('dragging');
 			}, 0);
 		},
 		dragEndTeam: function(e) {
 			app.dragging = null;
-			var originalLoc = parseInt(e.currentTarget.value);
-			if (app.draggingLoc !== originalLoc) {
+			var originalLoc = parseInt(e.currentTarget.dataset.value);
+			if (isNaN(originalLoc)) {
+				throw new Error("drag failed");
+				return;
+			}
+			var newLoc = Math.floor(app.draggingLoc);
+			if (app.draggingLoc < originalLoc) newLoc += 1;
+			if (newLoc !== originalLoc) {
 				var team = Storage.teams[originalLoc];
-				var newLoc = Math.floor(app.draggingLoc);
-				if (app.draggingLoc < originalLoc) newLoc += 1;
 				Storage.teams.splice(originalLoc, 1);
 				Storage.teams.splice(newLoc, 0, team);
 			}
+
+			// possibly half-works-around a hover issue in
 			this.$('.teamlist').css('pointer-events', 'none');
 			$(e.currentTarget).parent().removeClass('dragging');
-			this.updateTeamList();
+
+			// We're going to try to animate the team settling into its new position
+			// This would be really straightforward if not for the confluence of several
+			// different browser bugs:
+			// http://stackoverflow.com/questions/20482233/x-and-y-values-in-html5-drag-events-are-inconsistent-across-browsers
+
+			if (e.originalEvent.dataTransfer.dropEffect === 'move' &&
+				(e.originalEvent.pageX || e.originalEvent.pageY)) {
+				// We have a pageX and a pageY to work with
+				var finalPos = $(e.currentTarget).offset();
+				this.updateTeamList();
+				var $newTeamEl = this.$('.team[data-value=' + newLoc + ']');
+
+				// console.log('x,y = ' + [e.originalEvent.x, e.originalEvent.y]);
+				// console.log('screenX,screenY = ' + [e.originalEvent.screenX, e.originalEvent.screenY]);
+				// console.log('clientX,clientY = ' + [e.originalEvent.clientX, e.originalEvent.clientY]);
+				// console.log('pageX,pageY = ' + [e.originalEvent.pageX, e.originalEvent.pageY]);
+				var finalOffset;
+				if (navigator.userAgent.indexOf("Chrome/") >= 0) {
+					// Hopefully Chrome
+					// event.pageX|pageY are relative to the bottom left corner of the draggable in Chrome ??
+					// (x-0, y-50) gives the top left corner
+					// Let's just hope this is the standard and we won't have to redo it for IE or something
+					finalOffset = [e.originalEvent.pageX - 0 - finalPos.left, e.originalEvent.pageY - 50 - finalPos.top];
+				} else if (navigator.userAgent.indexOf("Safari/") >= 0) {
+					// Hopefully Safari
+					// Safari is even weirder, it appears to be the mouse position relative to a spot exactly
+					// 63 pixels above the bottom of the viewport... I have no clue where the 63 comes from so
+					// I'm hoping it's the same on other computers
+					finalOffset = [e.originalEvent.pageX - app.draggingOffsetX - finalPos.left, $('body').height() - 63 - e.originalEvent.pageY - app.draggingOffsetY - finalPos.top];
+				}
+
+				if (finalOffset) {
+					$newTeamEl.css('transform', 'translate(' + finalOffset[0] + 'px, ' + finalOffset[1] + 'px)');
+					setTimeout(function() {
+						$newTeamEl.css('transition', 'transform 0.15s');
+						// it's 2015 and Safari doesn't support unprefixed transition!!!
+						$newTeamEl.css('-webkit-transition', '-webkit-transform 0.15s');
+						$newTeamEl.css('transform', 'translate(0px, 0px)');
+					});
+				}
+			} else {
+				// browser doesn't support event.pageX|pageY for dragend
+				// (namely, Firefox)
+				this.updateTeamList();
+			}
 		},
-		dragOverTeam: function(e) {
+		dragEnterTeam: function(e) {
 			if (app.dragging) {
 				if (e.currentTarget === app.dragging) {
 					e.preventDefault();
 					return;
 				}
-				if (app.draggingLoc > parseInt(e.currentTarget.value)) {
+				var hoverLoc = parseInt(e.currentTarget.dataset.value);
+				if (app.draggingLoc > hoverLoc) {
+					// dragging up
 					$(e.currentTarget).parent().before($(app.dragging).parent());
-					app.draggingLoc = parseInt(e.currentTarget.value) - 0.5;
+					app.draggingLoc = parseInt(e.currentTarget.dataset.value) - 0.5;
 				} else {
+					// dragging down
 					$(e.currentTarget).parent().after($(app.dragging).parent());
-					app.draggingLoc = parseInt(e.currentTarget.value) + 0.5;
+					app.draggingLoc = parseInt(e.currentTarget.dataset.value) + 0.5;
 				}
 			}
 		},
